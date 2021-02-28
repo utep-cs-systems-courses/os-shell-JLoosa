@@ -1,3 +1,5 @@
+#!/usr/bin/python3.6
+
 """
     @author Jacob Loosa
     Date Modified: 20 February 2021
@@ -14,15 +16,20 @@ from typing import ByteString, Optional, List
 _ENCODING = "utf-8"
 
 
+def print_debug(message: str):
+    print("[Debug]", message)
+
+
 class MyReadLine:
 
     def __init__(self, file_descriptor: int):
         # File Descriptor Information
         self._file_descriptor: int = file_descriptor
-        # Pre-String Information
+        # Pre-String Information1
         self._last_input: Optional[bytes] = None
         # String Information
         self._line_buffer: List[str] = list()
+        self._line_builder: Optional[str] = None
         self._last_output: Optional[str] = None
         self._current_line_number: int = 0
 
@@ -39,14 +46,18 @@ class MyReadLine:
         # Return nothing if end-of-file
         if len(self._last_input) == 0:
             return None
-        temporary_line_buffer = regex.split(b"\n", self._last_input)
-        for line in temporary_line_buffer:
-            # Skip over blank lines. This may cause issues?
-            if line == b"":
-                continue
-            if line.decode(_ENCODING) is None:
-                print("NoneType:", line)
-            self._line_buffer.append(line.decode(_ENCODING))
+
+        for index in range(len(self._last_input)):
+            current_char = chr(self._last_input[index])
+            if current_char == '\n':
+                self._line_buffer.append(self._line_builder)
+                self._line_builder = None
+            else:
+                if self._line_builder is None:
+                    self._line_builder = current_char
+                else:
+                    self._line_builder += current_char
+        self._last_input = None
 
     def read_line(self) -> Optional[str]:
         self._last_output = self._read_line()
@@ -98,6 +109,7 @@ class MyShell0:
             _result = self.next_line(True)
             if _result == "exit":
                 self._shell_running = False
+                self.write_str("Shell exiting.")
                 system.exit(0)
 
             _fork_rc = os.fork()
@@ -105,8 +117,15 @@ class MyShell0:
             if _fork_rc < 0:
                 self.write_str("Fork failed with code %d\n" % _fork_rc)
             elif _fork_rc == 0:
-                # TODO os.exec()
-                pass
+                args = _result.split()
+                for directory in regex.split(":", os.environ['PATH']):  # try each directory in the path
+                    program = "%s/%s" % (directory, args[0])
+                    try:
+                        os.execve(program, args, os.environ)  # try to exec program
+                    except FileNotFoundError:  # ...expected
+                        pass  # ...fail quietly
+                os.write(2, ("Child:    Could not exec %s\n" % args[0]).encode())
+                system.exit(1)  # terminate with error
             else:
                 self.write_str("Child process created with PID %d\n" % _fork_rc)
                 os.wait()
