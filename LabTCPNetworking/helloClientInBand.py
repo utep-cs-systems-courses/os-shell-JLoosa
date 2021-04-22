@@ -1,3 +1,5 @@
+
+
 import sys
 import os
 import socket
@@ -14,6 +16,7 @@ if __name__ == "__main__":
     connectionInformation = {
         "HOST_ADDRESS": None,
         "HOST_PORT": None,
+        "RECV_TIMEOUT": 1
     }
     
     # Establish default IO file descriptors and encoding
@@ -27,7 +30,18 @@ if __name__ == "__main__":
         os.write(fd, msg.encode(encoding=enc))
     
     def gets(fd: int = stdin, size: int = 1000) -> str:
-        return os.read(fd, size).decode(encoding=enc)
+        # Use .strip() to remove leading and trailing whitespace
+        return os.read(fd, size).decode(encoding=enc).strip()
+    
+    # Helper Methods for Network Messaging
+    def send_msg(msg: str, sock: socket):
+        sock.send((msg + "\n").encode(encoding=enc))
+
+    def recv_msg(sock: socket) -> str:
+        try:
+            return sock.recv(1024).decode(encoding=enc)
+        except socket.error:
+            return ""
 
     # Parse information from the command line
     printf("Received %d arguments.\n", len(sys.argv))
@@ -86,20 +100,23 @@ if __name__ == "__main__":
     if localSocket is None:
         printf("Failed to establish a connection to the target.\n")
         exit(1)
+
+    # Set a receive timeout
+    localSocket.settimeout(connectionInformation["RECV_TIMEOUT"])
     
     # Read and then allow the user to send in a loop
     shouldExit = False
     buffer = ""
     while not shouldExit:
         # Read data if there is any
-        data = localSocket.recv(1024).decode(encoding=enc)
+        data = recv_msg(localSocket)
         if len(data) > 0:
             buffer = buffer + data
             continue
         # Split at newlines and print
         while "\n" in buffer:
             index = buffer.index("\n")
-            printf("%s", buffer[:index])
+            printf("%s\n", buffer[:index])
             buffer = buffer[index+1:]
         # Allow the user to reply
         printf("$ ")
@@ -108,5 +125,5 @@ if __name__ == "__main__":
             localSocket.close()
             localSocket = None
             exit(0)
-        localSocket.send(reply.encode(enc))
+        send_msg(reply, sock=localSocket)
 
